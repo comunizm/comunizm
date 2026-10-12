@@ -8,6 +8,19 @@ window.addEventListener("DOMContentLoaded", function(indexUrl) {
   const form = document.getElementById("search");
   const input = document.getElementById("search-input");
 
+  // LOCAL CHANGE (comunizm): results are shown only on the homepage. A search started on any other page
+  // redirects to <home>/#search=<term>, and the homepage starts the search from that hash on load.
+  // Upstream replaced the main container in place on every page, leaving the page header behind.
+  const homeUrl = new URL(document.querySelector(".navbar-brand").href, window.location.href);
+
+  function isHomePage() {
+    return window.location.pathname === homeUrl.pathname;
+  }
+
+  function searchHash(term) {
+    return "#search=" + encodeURIComponent(term);
+  }
+
   form.addEventListener("submit", function(event) {
     event.preventDefault();
 
@@ -15,11 +28,35 @@ window.addEventListener("DOMContentLoaded", function(indexUrl) {
     if (!term) {
       return;
     }
+    if (!isHomePage()) {
+      window.location.assign(homeUrl.pathname + searchHash(term));
+      return;
+    }
     startSearch(term, false);
   }, false);
 
-  if (history.state && history.state.type == "search") {
+  // Search requested through the URL hash (redirect from another page, bookmark, shared link).
+  let hashTerm = null;
+  if (window.location.hash.indexOf("#search=") === 0) {
+    try {
+      hashTerm = decodeURIComponent(window.location.hash.slice("#search=".length)).trim();
+    }
+    catch (e) {
+      hashTerm = null;
+    }
+  }
+
+  if (hashTerm && !isHomePage()) {
+    // old links such as /despre/#search=kurz: send them to the homepage
+    window.location.replace(homeUrl.pathname + searchHash(hashTerm));
+  }
+  else if (history.state && history.state.type == "search") {
     startSearch(history.state.term, true);
+  }
+  else if (hashTerm) {
+    // mark this history entry so that a reload or "back" keeps working like a normal search
+    history.replaceState({type: "search", term: hashTerm}, "", window.location.href);
+    startSearch(hashTerm, true);
   }
 
   window.addEventListener("popstate", function(event) {
@@ -153,8 +190,10 @@ window.addEventListener("DOMContentLoaded", function(indexUrl) {
           history.pushState({type: "search", term: term}, title.textContent, "#search=" + encodeURIComponent(term));
       }
 
+      // LOCAL CHANGE (comunizm): close the mobile menu only if it is really open. Upstream checked for the
+      // "collapsed" class, which a freshly loaded page never has, so the click OPENED the menu after a redirect.
       let menuToggler = document.querySelector(".navbar-toggler");
-      if (menuToggler && !menuToggler.classList.contains("collapsed")) {
+      if (menuToggler && menuToggler.getAttribute("aria-expanded") === "true") {
         menuToggler.click();
       }
     }
